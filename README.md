@@ -1,30 +1,88 @@
-# ubuntu-in-termux
+# ubuntu-in-termux (by Krishna)
 
 [![DISCORD](https://img.shields.io/badge/Chat-On%20Discord-738BD7.svg?style=for-the-badge)](https://discord.gg/Xaqkdeh)
 
 ## What's This?
 
-This is a script that allows you to install Ubuntu in your termux application without a rooted device
+This is a script that allows you to install **Ubuntu 24.04.3 LTS** in
+your Termux application without a rooted device.
 
 ## Updates
 
-**• Updated to ubuntu 24.04**
+**• Updated to Ubuntu 24.04.3 (Noble Numbat)**\
+**• Improved installer script with logging, error handling & stability**
 
-## Important
+## Important Notes
 
-**• If you have to use ubuntu in termux with a x86/i\*86 architecture or prefer ubuntu 19.10 you can use this branch -> https://github.com/MFDGaming/ubuntu-in-termux/tree/ubuntu19.10**
+-   If you have to use Ubuntu in Termux with a **x86/i\*86
+    architecture** or prefer **Ubuntu 19.10**, you can use this branch:\
+    👉 https://github.com/MFDGaming/ubuntu-in-termux/tree/ubuntu19.10
 
-**• If you get an error message that says "Fatal Kernel too old" you have to uncomment the line that reads "command+=" -k 4.14.81"" (remove the # that is located in front of the line) in the "startubuntu.sh" file**
+-   If you get an error message that says **"Fatal Kernel too old"**,
+    you have to **uncomment** the line that reads:
 
-### Installation steps
+    ``` bash
+    command+=" -k 4.14.81"
+    ```
 
-1. Update termux: `apt-get update && apt-get upgrade -y`
-2. Install wget: `apt-get install wget -y`
-3. Install proot: `apt-get install proot -y`
-4. Install git: `apt-get install git -y`
-5. Go to HOME folder: `cd ~`
-6. Download script: `git clone https://github.com/simpleboykrishna0/ubuntu-in-termux.git`
-7. Go to script folder: `cd ubuntu-in-termux`
-8. Give execution permission: `chmod +x ubuntu.sh`
-9. Run the script: `./ubuntu.sh -y`
-10. Now just start ubuntu: `./startubuntu.sh`
+    (remove the `#` at the beginning) inside the `startubuntu.sh` file.
+
+------------------------------------------------------------------------
+
+## 🔧 Installation Steps
+
+1.  **Update Termux packages**
+
+    ``` bash
+    apt-get update && apt-get upgrade -y
+    ```
+
+2.  **Install dependencies**
+
+    ``` bash
+    apt-get install wget proot git -y
+    ```
+
+3.  **Go to home directory**
+
+    ``` bash
+    cd ~
+    ```
+
+4.  **Clone the repository**
+
+    ``` bash
+    git clone https://github.com/simpleboykrishna0/ubuntu-in-termux.git
+    ```
+
+5.  **Go to the script folder**
+
+    ``` bash
+    cd ubuntu-in-termux
+    ```
+
+6.  **Give execution permission**
+
+    ``` bash
+    chmod +x ubuntu.sh
+    ```
+
+7.  **Run the installer**
+
+    ``` bash
+    ./ubuntu.sh -y
+    ```
+
+8.  **Start Ubuntu**
+
+    ``` bash
+    ./startubuntu.sh
+    ```
+
+------------------------------------------------------------------------
+
+## 🎉 Done!
+
+You now have **Ubuntu 24.04.3 LTS** running inside Termux on your
+Android device 🚀\
+Maintained by **Krishna (simpleboykrishna0)**

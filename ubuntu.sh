@@ -1,84 +1,114 @@
 #!/data/data/com.termux/files/usr/bin/bash
 set -euo pipefail
 
-time1="$( date +"%r" )"
+#######################################
+# Logging helpers
+#######################################
+log_info()    { echo -e "\e[38;5;39m[INFO]\e[0m    $*"; }
+log_warn()    { echo -e "\e[38;5;214m[WARN]\e[0m    $*"; }
+log_error()   { echo -e "\e[38;5;196m[ERROR]\e[0m   $*" >&2; }
+log_debug()   { echo -e "\e[38;5;244m[DEBUG]\e[0m   $*"; }
 
-directory=ubuntu-fs
-UBUNTU_VERSION='24.04.3'
-UBUNTU_CODENAME='noble'
+#######################################
+# Config
+#######################################
+UBUNTU_VERSION="24.04.3"
+UBUNTU_CODENAME="noble"
+ROOTFS_DIR="ubuntu-fs"
+BIND_DIR="ubuntu-binds"
+START_SCRIPT="startubuntu.sh"
+TARBALL="ubuntu.tar.gz"
 
-install1 () {
-if [ -d "$directory" ];then
-    echo "[${time1}] [WARNING]: Ubuntu rootfs already exists, skipping download."
-    first=1
-fi
+#######################################
+# Check required commands
+#######################################
+check_dependencies() {
+    for cmd in proot wget tar; do
+        if ! command -v "$cmd" >/dev/null 2>&1; then
+            log_error "Missing required command: $cmd"
+            exit 1
+        fi
+    done
+}
 
-if [ -z "$(command -v proot)" ];then
-    echo "[${time1}] [ERROR]: Please install proot."
-    exit 1
-fi
-
-if [ -z "$(command -v wget)" ];then
-    echo "[${time1}] [ERROR]: Please install wget."
-    exit 1
-fi
-
-if [ "${first:-0}" != 1 ];then
-    rm -f ubuntu.tar.gz
-
-    ARCHITECTURE=$(dpkg --print-architecture)
-    case "$ARCHITECTURE" in
-        aarch64|arm64) ARCHITECTURE=arm64;;
-        arm|armhf) ARCHITECTURE=armhf;;
-        amd64|x86_64) ARCHITECTURE=amd64;;
-        *) echo "[ERROR] Unknown architecture: $ARCHITECTURE"; exit 1;;
+#######################################
+# Detect architecture
+#######################################
+detect_arch() {
+    local arch
+    arch=$(dpkg --print-architecture)
+    case "$arch" in
+        aarch64|arm64) echo "arm64";;
+        arm|armhf)     echo "armhf";;
+        amd64|x86_64)  echo "amd64";;
+        *)
+            log_error "Unsupported architecture: $arch"
+            exit 1
+            ;;
     esac
+}
 
-    url="https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_CODENAME}/release/ubuntu-base-${UBUNTU_VERSION}-base-${ARCHITECTURE}.tar.gz"
-    echo "[DEBUG] Architecture detected: $ARCHITECTURE"
-    echo "[DEBUG] Downloading from: $url"
+#######################################
+# Download rootfs
+#######################################
+download_rootfs() {
+    local arch="$1"
+    local url="https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_CODENAME}/release/ubuntu-base-${UBUNTU_VERSION}-base-${arch}.tar.gz"
 
-    if ! wget "$url" -O ubuntu.tar.gz; then
-        echo "[ERROR] Download failed."
+    log_info "Downloading Ubuntu $UBUNTU_VERSION rootfs for $arch"
+    log_debug "URL: $url"
+
+    rm -f "$TARBALL"
+    if ! wget --show-progress -O "$TARBALL" "$url"; then
+        log_error "Download failed!"
         exit 1
     fi
 
-    echo "[DEBUG] Download complete, file details:"
-    ls -lh ubuntu.tar.gz
-    file ubuntu.tar.gz || true
+    log_debug "Download complete: $(ls -lh "$TARBALL")"
+    if ! file "$TARBALL" | grep -q "gzip compressed"; then
+        log_error "Downloaded file is not a valid tarball!"
+        exit 1
+    fi
+}
 
-    echo "[DEBUG] Starting extraction..."
-    mkdir -p $directory
-    cur=$(pwd)
-    cd $directory
-    proot --link2symlink tar -zxf $cur/ubuntu.tar.gz --exclude='dev' ||:
-    echo "[INFO] Extraction done!"
+#######################################
+# Extract rootfs
+#######################################
+extract_rootfs() {
+    log_info "Extracting rootfs..."
+    mkdir -p "$ROOTFS_DIR"
+    proot --link2symlink tar -zxf "$TARBALL" -C "$ROOTFS_DIR" --exclude='dev' || true
 
-    echo "[INFO] Fixing resolv.conf..."
-    echo "nameserver 8.8.8.8" > etc/resolv.conf
-    echo "nameserver 8.8.4.4" >> etc/resolv.conf
+    # Basic fixes
+    echo "nameserver 8.8.8.8" > "$ROOTFS_DIR/etc/resolv.conf"
+    echo "nameserver 8.8.4.4" >> "$ROOTFS_DIR/etc/resolv.conf"
+    echo -e "#!/bin/sh\nexit" > "$ROOTFS_DIR/usr/bin/groups"
 
-    echo -e "#!/bin/sh\nexit" > usr/bin/groups
+    log_info "Extraction completed!"
+}
 
-    cd $cur
-fi
-
-mkdir -p ubuntu-binds
-bin=startubuntu.sh
-echo "[INFO] Creating start script..."
-cat > $bin <<- EOM
+#######################################
+# Create start script
+#######################################
+create_start_script() {
+    log_info "Creating start script: $START_SCRIPT"
+    mkdir -p "$BIND_DIR"
+    cat > "$START_SCRIPT" <<- 'EOM'
 #!/bin/bash
-cd \$(dirname \$0)
+cd "$(dirname "$0")"
 unset LD_PRELOAD
+
 command="proot"
 command+=" --link2symlink"
 command+=" -0"
-command+=" -r $directory"
-if [ -n "\$(ls -A ubuntu-binds)" ]; then
-    for f in ubuntu-binds/* ;do
-      . \$f
+command+=" -r ubuntu-fs"
+
+if [ -n "$(ls -A ubuntu-binds 2>/dev/null)" ]; then
+    for f in ubuntu-binds/*; do
+        . "$f"
     done
 fi
+
 command+=" -b /dev"
 command+=" -b /proc"
 command+=" -b /sys"
@@ -92,32 +122,50 @@ command+=" -w /root"
 command+=" /usr/bin/env -i"
 command+=" HOME=/root"
 command+=" PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games"
-command+=" TERM=\$TERM"
+command+=" TERM=$TERM"
 command+=" LANG=C.UTF-8"
 command+=" /bin/bash --login"
-com="\$@"
-if [ -z "\$1" ];then
-    exec \$command
+
+if [ $# -eq 0 ]; then
+    exec $command
 else
-    \$command -c "\$com"
+    $command -c "$*"
 fi
 EOM
 
-termux-fix-shebang $bin
-chmod +x $bin
-
-rm -f ubuntu.tar.gz
-echo "[INFO] Installation complete! Run ./startubuntu.sh to launch Ubuntu."
+    termux-fix-shebang "$START_SCRIPT"
+    chmod +x "$START_SCRIPT"
 }
 
-if [ "\${1:-}" = "-y" ];then
-    install1
-else
-    echo -n "[QUESTION]: Do you want to install ubuntu-in-termux? [Y/n] "
-    read cmd1
-    if [[ "\$cmd1" =~ ^[Yy]$ ]];then
-        install1
+#######################################
+# Main installer
+#######################################
+install() {
+    check_dependencies
+
+    if [ -d "$ROOTFS_DIR" ]; then
+        log_warn "Ubuntu rootfs already exists, skipping download."
     else
-        echo "[ERROR]: Installation aborted."
+        local arch
+        arch=$(detect_arch)
+        download_rootfs "$arch"
+        extract_rootfs
+        rm -f "$TARBALL"
     fi
+
+    create_start_script
+    log_info "Installation complete! Run: ./startubuntu.sh"
+}
+
+#######################################
+# Entry point
+#######################################
+if [ "${1:-}" = "-y" ]; then
+    install
+else
+    read -rp "[QUESTION]: Do you want to install ubuntu-in-termux? [Y/n] " reply
+    case "$reply" in
+        [Yy]*) install ;;
+        *) log_error "Installation aborted." ;;
+    esac
 fi

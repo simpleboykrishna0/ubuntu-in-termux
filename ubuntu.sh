@@ -1,114 +1,83 @@
 #!/data/data/com.termux/files/usr/bin/bash
-set -euo pipefail
 
-#######################################
-# Logging helpers
-#######################################
-log_info()    { echo -e "\e[38;5;39m[INFO]\e[0m    $*"; }
-log_warn()    { echo -e "\e[38;5;214m[WARN]\e[0m    $*"; }
-log_error()   { echo -e "\e[38;5;196m[ERROR]\e[0m   $*" >&2; }
-log_debug()   { echo -e "\e[38;5;244m[DEBUG]\e[0m   $*"; }
+time1="$( date +"%r" )"
 
-#######################################
-# Config
-#######################################
-UBUNTU_VERSION="24.04.3"
-UBUNTU_CODENAME="noble"
-ROOTFS_DIR="ubuntu-fs"
-BIND_DIR="ubuntu-binds"
-START_SCRIPT="startubuntu.sh"
-TARBALL="ubuntu.tar.gz"
+install1 () {
+directory=ubuntu-fs
+UBUNTU_VERSION='24.04.3'
+if [ -d "$directory" ];then
+first=1
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;227m[WARNING]:\e[0m \x1b[38;5;87m Skipping the download and the extraction\n"
+elif [ -z "$(command -v proot)" ];then
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install proot.\n"
+printf "\e[0m"
+exit 1
+elif [ -z "$(command -v wget)" ];then
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install wget.\n"
+printf "\e[0m"
+exit 1
+fi
+if [ "$first" != 1 ];then
+if [ -f "ubuntu.tar.gz" ];then
+rm -rf ubuntu.tar.gz
+fi
+if [ ! -f "ubuntu.tar.gz" ];then
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Downloading the ubuntu rootfs, please wait...\n"
+ARCHITECTURE=$(dpkg --print-architecture)
+case "$ARCHITECTURE" in
+aarch64) ARCHITECTURE=arm64;;
+arm) ARCHITECTURE=armhf;;
+amd64|x86_64) ARCHITECTURE=amd64;;
+*)
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Unknown architecture :- $ARCHITECTURE"
+exit 1
+;;
 
-#######################################
-# Check required commands
-#######################################
-check_dependencies() {
-    for cmd in proot wget tar; do
-        if ! command -v "$cmd" >/dev/null 2>&1; then
-            log_error "Missing required command: $cmd"
-            exit 1
-        fi
-    done
-}
+esac
 
-#######################################
-# Detect architecture
-#######################################
-detect_arch() {
-    local arch
-    arch=$(dpkg --print-architecture)
-    case "$arch" in
-        aarch64|arm64) echo "arm64";;
-        arm|armhf)     echo "armhf";;
-        amd64|x86_64)  echo "amd64";;
-        *)
-            log_error "Unsupported architecture: $arch"
-            exit 1
-            ;;
-    esac
-}
+wget https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_VERSION}/release/ubuntu-base-${UBUNTU_VERSION}-base-${ARCHITECTURE}.tar.gz -q -O ubuntu.tar.gz 
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Download complete!\n"
 
-#######################################
-# Download rootfs
-#######################################
-download_rootfs() {
-    local arch="$1"
-    local url="https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_CODENAME}/release/ubuntu-base-${UBUNTU_VERSION}-base-${arch}.tar.gz"
-
-    log_info "Downloading Ubuntu $UBUNTU_VERSION rootfs for $arch"
-    log_debug "URL: $url"
-
-    rm -f "$TARBALL"
-    if ! wget --show-progress -O "$TARBALL" "$url"; then
-        log_error "Download failed!"
-        exit 1
-    fi
-
-    log_debug "Download complete: $(ls -lh "$TARBALL")"
-    if ! file "$TARBALL" | grep -q "gzip compressed"; then
-        log_error "Downloaded file is not a valid tarball!"
-        exit 1
-    fi
-}
-
-#######################################
-# Extract rootfs
-#######################################
-extract_rootfs() {
-    log_info "Extracting rootfs..."
-    mkdir -p "$ROOTFS_DIR"
-    proot --link2symlink tar -zxf "$TARBALL" -C "$ROOTFS_DIR" --exclude='dev' || true
-
-    # Basic fixes
-    echo "nameserver 8.8.8.8" > "$ROOTFS_DIR/etc/resolv.conf"
-    echo "nameserver 8.8.4.4" >> "$ROOTFS_DIR/etc/resolv.conf"
-    echo -e "#!/bin/sh\nexit" > "$ROOTFS_DIR/usr/bin/groups"
-
-    log_info "Extraction completed!"
-}
-
-#######################################
-# Create start script
-#######################################
-create_start_script() {
-    log_info "Creating start script: $START_SCRIPT"
-    mkdir -p "$BIND_DIR"
-    cat > "$START_SCRIPT" <<- 'EOM'
-#!/bin/bash
-cd "$(dirname "$0")"
-unset LD_PRELOAD
-
-command="proot"
-command+=" --link2symlink"
-command+=" -0"
-command+=" -r ubuntu-fs"
-
-if [ -n "$(ls -A ubuntu-binds 2>/dev/null)" ]; then
-    for f in ubuntu-binds/*; do
-        . "$f"
-    done
 fi
 
+cur=`pwd`
+mkdir -p $directory
+cd $directory
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Decompressing the ubuntu rootfs, please wait...\n"
+proot --link2symlink tar -zxf $cur/ubuntu.tar.gz --exclude='dev'||:
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The ubuntu rootfs have been successfully decompressed!\n"
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Fixing the resolv.conf, so that you have access to the internet\n"
+printf "nameserver 8.8.8.8\nnameserver 8.8.4.4\n" > etc/resolv.conf
+stubs=()
+stubs+=('usr/bin/groups')
+for f in ${stubs[@]};do
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Writing stubs, please wait...\n"
+echo -e "#!/bin/sh\nexit" > "$f"
+done
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully wrote stubs!\n"
+cd $cur
+
+fi
+
+mkdir -p ubuntu-binds
+bin=startubuntu.sh
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Creating the start script, please wait...\n"
+cat > $bin <<- EOM
+#!/bin/bash
+cd \$(dirname \$0)
+## unset LD_PRELOAD in case termux-exec is installed
+unset LD_PRELOAD
+command="proot"
+## uncomment following line if you are having FATAL: kernel too old message.
+#command+=" -k 4.14.81"
+command+=" --link2symlink"
+command+=" -0"
+command+=" -r $directory"
+if [ -n "\$(ls -A ubuntu-binds)" ]; then
+    for f in ubuntu-binds/* ;do
+      . \$f
+    done
+fi
 command+=" -b /dev"
 command+=" -b /proc"
 command+=" -b /sys"
@@ -122,50 +91,46 @@ command+=" -w /root"
 command+=" /usr/bin/env -i"
 command+=" HOME=/root"
 command+=" PATH=/usr/local/sbin:/usr/local/bin:/bin:/usr/bin:/sbin:/usr/sbin:/usr/games:/usr/local/games"
-command+=" TERM=$TERM"
+command+=" TERM=\$TERM"
 command+=" LANG=C.UTF-8"
 command+=" /bin/bash --login"
-
-if [ $# -eq 0 ]; then
-    exec $command
+com="\$@"
+if [ -z "\$1" ];then
+    exec \$command
 else
-    $command -c "$*"
+    \$command -c "\$com"
 fi
 EOM
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The start script has been successfully created!\n"
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Fixing shebang of startubuntu.sh, please wait...\n"
+termux-fix-shebang $bin
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully fixed shebang of startubuntu.sh! \n"
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Making startubuntu.sh executable please wait...\n"
+chmod +x $bin
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully made startubuntu.sh executable\n"
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Cleaning up please wait...\n"
+rm ubuntu.tar.gz -rf
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully cleaned up!\n"
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The installation has been completed! You can now launch Ubuntu with ./startubuntu.sh\n"
+printf "\e[0m"
 
-    termux-fix-shebang "$START_SCRIPT"
-    chmod +x "$START_SCRIPT"
 }
+if [ "$1" = "-y" ];then
+install1
+elif [ "$1" = "" ];then
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;127m[QUESTION]:\e[0m \x1b[38;5;87m Do you want to install ubuntu-in-termux? [Y/n] "
 
-#######################################
-# Main installer
-#######################################
-install() {
-    check_dependencies
-
-    if [ -d "$ROOTFS_DIR" ]; then
-        log_warn "Ubuntu rootfs already exists, skipping download."
-    else
-        local arch
-        arch=$(detect_arch)
-        download_rootfs "$arch"
-        extract_rootfs
-        rm -f "$TARBALL"
-    fi
-
-    create_start_script
-    log_info "Installation complete! Run: ./startubuntu.sh"
-}
-
-#######################################
-# Entry point
-#######################################
-if [ "${1:-}" = "-y" ]; then
-    install
+read cmd1
+if [ "$cmd1" = "y" ];then
+install1
+elif [ "$cmd1" = "Y" ];then
+install1
 else
-    read -rp "[QUESTION]: Do you want to install ubuntu-in-termux? [Y/n] " reply
-    case "$reply" in
-        [Yy]*) install ;;
-        *) log_error "Installation aborted." ;;
-    esac
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Installation aborted.\n"
+printf "\e[0m"
+exit
+fi
+else
+printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Installation aborted.\n"
+printf "\e[0m"
 fi

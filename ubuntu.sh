@@ -1,4 +1,5 @@
 #!/data/data/com.termux/files/usr/bin/bash
+set -euo pipefail
 
 time1="$( date +"%r" )"
 
@@ -12,11 +13,9 @@ if [ -d "$directory" ];then
     printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;227m[WARNING]:\e[0m \x1b[38;5;87m Skipping the download and the extraction\n"
 elif [ -z "$(command -v proot)" ];then
     printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install proot.\n"
-    printf "\e[0m"
     exit 1
 elif [ -z "$(command -v wget)" ];then
     printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install wget.\n"
-    printf "\e[0m"
     exit 1
 fi
 
@@ -25,54 +24,48 @@ if [ "$first" != 1 ];then
         rm -rf ubuntu.tar.gz
     fi
 
-    if [ ! -f "ubuntu.tar.gz" ];then
-        printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Downloading the ubuntu rootfs, please wait...\n"
-        
-        ARCHITECTURE=$(dpkg --print-architecture)
-        case "$ARCHITECTURE" in
-            aarch64|arm64) ARCHITECTURE=arm64;;
-            arm|armhf) ARCHITECTURE=armhf;;
-            amd64|x86_64) ARCHITECTURE=amd64;;
-            *) 
-                printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Unknown architecture :- $ARCHITECTURE\n"
-                exit 1
-                ;;
-        esac
+    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[INFO]:\e[0m Downloading Ubuntu rootfs...\n"
+    ARCHITECTURE=$(dpkg --print-architecture)
+    case "$ARCHITECTURE" in
+        aarch64|arm64) ARCHITECTURE=arm64;;
+        arm|armhf) ARCHITECTURE=armhf;;
+        amd64|x86_64) ARCHITECTURE=amd64;;
+        *) printf "[${time1}] [ERROR]: Unknown architecture: $ARCHITECTURE\n"; exit 1;;
+    esac
 
-        wget https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_CODENAME}/release/ubuntu-base-${UBUNTU_VERSION}-base-${ARCHITECTURE}.tar.gz -q -O ubuntu.tar.gz 
-        if [ $? -ne 0 ]; then
-            printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Failed to download ubuntu rootfs.\n"
-            exit 1
-        fi
-        printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Download complete!\n"
+    url="https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_CODENAME}/release/ubuntu-base-${UBUNTU_VERSION}-base-${ARCHITECTURE}.tar.gz"
+    echo "[DEBUG] Download URL: $url"
+
+    # quiet (-q) hata diya, taki error dikhe
+    if ! wget "$url" -O ubuntu.tar.gz; then
+        echo "[ERROR] Download failed. Check your internet or URL."
+        exit 1
     fi
+
+    echo "[DEBUG] Download complete:"
+    ls -lh ubuntu.tar.gz
+    file ubuntu.tar.gz || true
 
     cur=`pwd`
     mkdir -p $directory
     cd $directory
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Decompressing the ubuntu rootfs, please wait...\n"
-    proot --link2symlink tar -zxf $cur/ubuntu.tar.gz --exclude='dev' || {
-        echo "Extraction failed!"
-        exit 1
-    }
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The ubuntu rootfs has been successfully decompressed!\n"
+    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[INFO]:\e[0m Extracting Ubuntu rootfs...\n"
+    proot --link2symlink tar -zxf $cur/ubuntu.tar.gz --exclude='dev' ||:
+    printf "[INFO]: Extraction done!\n"
 
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Fixing the resolv.conf, so that you have access to the internet\n"
-    mkdir -p etc
+    printf "[INFO]: Fixing resolv.conf...\n"
     printf "nameserver 8.8.8.8\nnameserver 8.8.4.4\n" > etc/resolv.conf
 
     stubs=('usr/bin/groups')
     for f in ${stubs[@]};do
-        printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Writing stubs, please wait...\n"
         echo -e "#!/bin/sh\nexit" > "$f"
     done
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Successfully wrote stubs!\n"
+
     cd $cur
 fi
 
 mkdir -p ubuntu-binds
 bin=startubuntu.sh
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Creating the start script, please wait...\n"
 cat > $bin <<- EOM
 #!/bin/bash
 cd \$(dirname \$0)
@@ -109,29 +102,21 @@ else
     \$command -c "\$com"
 fi
 EOM
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m The start script has been successfully created!\n"
 
 termux-fix-shebang $bin
 chmod +x $bin
-rm ubuntu.tar.gz -rf
-
-printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[Installer thread/INFO]:\e[0m \x1b[38;5;87m Installation completed! Launch Ubuntu with ./startubuntu.sh\n"
-printf "\e[0m"
+rm -f ubuntu.tar.gz
+printf "\n[INFO]: Installation complete! Run ./startubuntu.sh to launch Ubuntu.\n"
 }
 
-if [ "$1" = "-y" ];then
+if [ "\${1:-}" = "-y" ];then
     install1
-elif [ -z "$1" ];then
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;127m[QUESTION]:\e[0m \x1b[38;5;87m Do you want to install ubuntu-in-termux? [Y/n] "
+else
+    printf "[QUESTION]: Do you want to install ubuntu-in-termux? [Y/n] "
     read cmd1
-    if [ "$cmd1" = "y" ] || [ "$cmd1" = "Y" ];then
+    if [[ "\$cmd1" =~ ^[Yy]$ ]];then
         install1
     else
-        printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Installation aborted.\n"
-        printf "\e[0m"
-        exit
+        echo "[ERROR]: Installation aborted."
     fi
-else
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Installation aborted.\n"
-    printf "\e[0m"
 fi

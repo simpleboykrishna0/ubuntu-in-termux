@@ -3,69 +3,69 @@ set -euo pipefail
 
 time1="$( date +"%r" )"
 
-install1 () {
 directory=ubuntu-fs
 UBUNTU_VERSION='24.04.3'
 UBUNTU_CODENAME='noble'
 
+install1 () {
 if [ -d "$directory" ];then
+    echo "[${time1}] [WARNING]: Ubuntu rootfs already exists, skipping download."
     first=1
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;227m[WARNING]:\e[0m \x1b[38;5;87m Skipping the download and the extraction\n"
-elif [ -z "$(command -v proot)" ];then
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install proot.\n"
-    exit 1
-elif [ -z "$(command -v wget)" ];then
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;203m[ERROR]:\e[0m \x1b[38;5;87m Please install wget.\n"
+fi
+
+if [ -z "$(command -v proot)" ];then
+    echo "[${time1}] [ERROR]: Please install proot."
     exit 1
 fi
 
-if [ "$first" != 1 ];then
-    if [ -f "ubuntu.tar.gz" ];then
-        rm -rf ubuntu.tar.gz
-    fi
+if [ -z "$(command -v wget)" ];then
+    echo "[${time1}] [ERROR]: Please install wget."
+    exit 1
+fi
 
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[INFO]:\e[0m Downloading Ubuntu rootfs...\n"
+if [ "${first:-0}" != 1 ];then
+    rm -f ubuntu.tar.gz
+
     ARCHITECTURE=$(dpkg --print-architecture)
     case "$ARCHITECTURE" in
         aarch64|arm64) ARCHITECTURE=arm64;;
         arm|armhf) ARCHITECTURE=armhf;;
         amd64|x86_64) ARCHITECTURE=amd64;;
-        *) printf "[${time1}] [ERROR]: Unknown architecture: $ARCHITECTURE\n"; exit 1;;
+        *) echo "[ERROR] Unknown architecture: $ARCHITECTURE"; exit 1;;
     esac
 
     url="https://cdimage.ubuntu.com/ubuntu-base/releases/${UBUNTU_CODENAME}/release/ubuntu-base-${UBUNTU_VERSION}-base-${ARCHITECTURE}.tar.gz"
-    echo "[DEBUG] Download URL: $url"
+    echo "[DEBUG] Architecture detected: $ARCHITECTURE"
+    echo "[DEBUG] Downloading from: $url"
 
-    # quiet (-q) hata diya, taki error dikhe
     if ! wget "$url" -O ubuntu.tar.gz; then
-        echo "[ERROR] Download failed. Check your internet or URL."
+        echo "[ERROR] Download failed."
         exit 1
     fi
 
-    echo "[DEBUG] Download complete:"
+    echo "[DEBUG] Download complete, file details:"
     ls -lh ubuntu.tar.gz
     file ubuntu.tar.gz || true
 
-    cur=`pwd`
+    echo "[DEBUG] Starting extraction..."
     mkdir -p $directory
+    cur=$(pwd)
     cd $directory
-    printf "\x1b[38;5;214m[${time1}]\e[0m \x1b[38;5;83m[INFO]:\e[0m Extracting Ubuntu rootfs...\n"
     proot --link2symlink tar -zxf $cur/ubuntu.tar.gz --exclude='dev' ||:
-    printf "[INFO]: Extraction done!\n"
+    echo "[INFO] Extraction done!"
 
-    printf "[INFO]: Fixing resolv.conf...\n"
-    printf "nameserver 8.8.8.8\nnameserver 8.8.4.4\n" > etc/resolv.conf
+    echo "[INFO] Fixing resolv.conf..."
+    echo "nameserver 8.8.8.8" > etc/resolv.conf
+    echo "nameserver 8.8.4.4" >> etc/resolv.conf
 
-    stubs=('usr/bin/groups')
-    for f in ${stubs[@]};do
-        echo -e "#!/bin/sh\nexit" > "$f"
-    done
+    echo -e "#!/bin/sh\nexit" > usr/bin/groups
 
     cd $cur
 fi
 
 mkdir -p ubuntu-binds
 bin=startubuntu.sh
+echo "[INFO] Creating start script..."
 cat > $bin <<- EOM
 #!/bin/bash
 cd \$(dirname \$0)
@@ -105,14 +105,15 @@ EOM
 
 termux-fix-shebang $bin
 chmod +x $bin
+
 rm -f ubuntu.tar.gz
-printf "\n[INFO]: Installation complete! Run ./startubuntu.sh to launch Ubuntu.\n"
+echo "[INFO] Installation complete! Run ./startubuntu.sh to launch Ubuntu."
 }
 
 if [ "\${1:-}" = "-y" ];then
     install1
 else
-    printf "[QUESTION]: Do you want to install ubuntu-in-termux? [Y/n] "
+    echo -n "[QUESTION]: Do you want to install ubuntu-in-termux? [Y/n] "
     read cmd1
     if [[ "\$cmd1" =~ ^[Yy]$ ]];then
         install1
